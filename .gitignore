@@ -13,8 +13,8 @@ keystore.properties
 *.jks
 *.keystore
 
-# Веса модели в git не едут. Как собрать релизный APK -- см.
-# app/src/main/jniLibs/README.md
+# Веса модели в git не едут. Как собрать релизный APK -- см. README.md
+# и app/src/main/jniLibs/README.md.
 app/src/main/jniLibs/arm64-v8a/*.so
 !app/src/main/jniLibs/arm64-v8a/.gitkeep
 *.gguf

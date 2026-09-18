@@ -44,6 +44,79 @@ Telegram тоже.
 
 > за идею спасибо ув. Кибердед и ув. Лука Ебков
 
+## Сборка релиза
+
+Отдельного скрипта нет: релизный APK собирается на машине, где руками лежат
+веса, ассеты и дерево llama.cpp. В git этого нет (см. `.gitignore`).
+
+Нужны JDK 17, Android SDK, NDK, CMake 3.31.6 из SDK.
+
+1. **Веса.** GGUF Q4_0 кладётся как
+   `app/src/main/jniLibs/arm64-v8a/libmodel-qwen35-08b-q40.so`.
+   Это не библиотека: файл так называется, чтобы установщик распаковал его
+   в `nativeLibraryDir` и llama могла `mmap`. Без него приложение собирается,
+   но строка показывает «модель не установлена». Спайк — Unsloth Q4_0,
+   свой квант — `bash tools/make_gguf.sh`. Подробности:
+   [`app/src/main/jniLibs/README.md`](app/src/main/jniLibs/README.md).
+   В `app/build.gradle.kts` обязательно `useLegacyPackaging = true`,
+   в манифесте — `extractNativeLibs=true`.
+
+2. **Ассеты.** `app/src/main/assets/` (`triggers.json`, `articles.json` и
+   остальное) должны лежать локально. В репозитории их нет.
+
+3. **llama.cpp.** Дерево в `third_party/` тоже не в git. Пин и патч:
+
+```bash
+git clone https://github.com/ggml-org/llama.cpp third_party/llama.cpp
+git -C third_party/llama.cpp checkout 5bda51bfbc62e64193221e639f6ad4e08767d760
+git -C third_party/llama.cpp apply ../../tools/patches/llama.cpp-hexagon-ninja.patch
+```
+
+SHA пина — в `tools/llama-cpp-pin.txt`. Без патча вложенный cmake HTP
+не находит ninja.
+
+4. **NPU.** Если в `local.properties` есть `hexagon.sdk.dir` (или задан
+   `HEXAGON_SDK_ROOT`) — в APK попадут `libggml-hexagon.so` и
+   `libggml-htp-v*.so`. Без SDK сборка только CPU. Hexagon SDK 6.6.0.0,
+   путь к тулчейну — `tools/HEXAGON_Tools/19.0.07`.
+
+5. **Подпись.** `keystore.properties` в корне (файл вне git):
+
+```
+storeFile=souchastnik-release.jks
+storePassword=...
+keyAlias=souchastnik
+keyPassword=...
+```
+
+Нет файла — Gradle подписывает debug-ключом и пишет предупреждение.
+Такой APK можно отдать тестерам сбоку, публиковать в GitHub Releases
+и F-Droid нельзя: следующее обновление с другим ключом не встанет.
+
+6. **Сборка.**
+
+```bash
+./gradlew :app:assembleRelease
+```
+
+APK: `app/build/outputs/apk/release/app-release.apk` (сотни мегабайт
+из‑за весов). `BenchActivity` в релиз не входит.
+
+7. **Проверка до установки.**
+
+```bash
+unzip -l app/build/outputs/apk/release/app-release.apk | grep libmodel
+aapt dump permissions app/build/outputs/apk/release/app-release.apk
+```
+
+В APK должен быть `lib/arm64-v8a/libmodel-qwen35-08b-q40.so` (~507 МБ).
+Список разрешений пустой: `INTERNET` нет. Если задан Hexagon SDK —
+ещё `libggml-hexagon.so` и `libggml-htp-v*.so`.
+
+Строка «модель не установлена» при наборе — не только отсутствующий файл.
+Тот же текст, если `LlamaBridge.init` вернул 0 или процесс `:engine` умер.
+Смотреть `adb logcat -s souchastnik-engine:I souchastnik-native:I`.
+
 ## Лицензия
 
 GPL-3.0. Делайте что хотите
